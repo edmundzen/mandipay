@@ -1,0 +1,12 @@
+# secrets — never commit
+.env
+# local data
+*.db
+photos/
+test_photos/
+# python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.streamlit/secrets.toml
