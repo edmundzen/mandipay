@@ -1,15 +1,20 @@
 import os, json, time, random
 from google import genai
-from google.genai import types, errors
+from google.genai import types
 from dotenv import load_dotenv
 load_dotenv()
 
 client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
 
-# Fallback list of valid model names
-MODELS = ["gemini-1.5-flash", "gemini-2.0-flash"]
+# Fallback list of models (uses environment variable first if set)
+PRIMARY_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+MODELS = list(dict.fromkeys([PRIMARY_MODEL, "gemini-1.5-flash", "gemini-2.0-flash"]))
 
-CFG = types.GenerateContentConfig(response_mime_type="application/json", temperature=0, tools=[])
+CFG = types.GenerateContentConfig(
+    response_mime_type="application/json", 
+    temperature=0, 
+    tools=[]
+)
 
 GRADE_PROMPT = """You are a produce quality grader at an Indian mandi.
 Grade the produce in the photo using this rubric:
@@ -30,22 +35,22 @@ def _img(data, mime):
     return types.Part.from_bytes(data=data, mime_type=mime or "image/jpeg")
 
 class AIBusy(Exception):
-    """Raised when every model attempt failed (overload, rate limit)."""
+    """Raised when every model attempt failed."""
 
 def _ask(contents):
-    last = None
+    last_err = None
     for model in MODELS:
-        for attempt in range(3):
+        for attempt in range(2):
             try:
                 r = client.models.generate_content(model=model, contents=contents, config=CFG)
-                return json.loads(r.text)
-            except errors.APIError as e:
-                # Include 404 so it moves to fallback if a model is deprecated/not found
-                if getattr(e, "code", None) not in (404, 429, 500, 503):
-                    raise
-                last = e
-                time.sleep(1.5 * 2 ** attempt + random.random())
-    raise AIBusy("The AI grader is busy right now. Please wait a minute and try again.") from last
+                if r.text:
+                    return json.loads(r.text)
+            except Exception as e:
+                # Catch ALL exceptions (404, 429, 503, connection drops) to try the next attempt/model
+                last_err = e
+                time.sleep(1 + random.random())
+                
+    raise AIBusy(f"AI Service Error: {last_err}") from last_err
 
 def grade(image_bytes, mime="image/jpeg"):
     return _ask([_img(image_bytes, mime), GRADE_PROMPT])
