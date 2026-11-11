@@ -5,8 +5,11 @@ from dotenv import load_dotenv
 load_dotenv()
 
 client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
-MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
-CFG = types.GenerateContentConfig(response_mime_type="application/json", temperature=0)
+
+# Fallback list of valid model names
+MODELS = ["gemini-3.8-flash", "gemini-2.5-flash"]
+
+CFG = types.GenerateContentConfig(response_mime_type="application/json", temperature=0, tools=[])
 
 GRADE_PROMPT = """You are a produce quality grader at an Indian mandi.
 Grade the produce in the photo using this rubric:
@@ -29,9 +32,6 @@ def _img(data, mime):
 class AIBusy(Exception):
     """Raised when every model attempt failed (overload, rate limit)."""
 
-# Try the main model first, then a fallback if Google says it's overloaded (503) or rate-limited (429).
-MODELS = list(dict.fromkeys([MODEL, os.getenv("GEMINI_FALLBACK_MODEL", "gemini-2.5-flash")]))
-
 def _ask(contents):
     last = None
     for model in MODELS:
@@ -40,7 +40,8 @@ def _ask(contents):
                 r = client.models.generate_content(model=model, contents=contents, config=CFG)
                 return json.loads(r.text)
             except errors.APIError as e:
-                if getattr(e, "code", None) not in (429, 500, 503):
+                # Include 404 so it moves to fallback if a model is deprecated/not found
+                if getattr(e, "code", None) not in (404, 429, 500, 503):
                     raise
                 last = e
                 time.sleep(1.5 * 2 ** attempt + random.random())
@@ -52,4 +53,3 @@ def grade(image_bytes, mime="image/jpeg"):
 def judge(before_bytes, after_bytes, grade_letter, after_mime="image/jpeg"):
     return _ask([_img(before_bytes, "image/jpeg"), _img(after_bytes, after_mime),
                  JUDGE_PROMPT.format(grade=grade_letter)])
-
