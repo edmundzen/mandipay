@@ -50,11 +50,37 @@ def create_order(amount_usd, ref):
     return o["id"], approve
 
 
-def capture(order_id):
-    """Capture after the buyer approves. Returns capture_id (save it: refunds need it)."""
-    r = requests.post(f"{BASE}/v2/checkout/orders/{order_id}/capture", headers=_headers(), timeout=TIMEOUT)
+class PayPalError(Exception):
+    """Readable PayPal error (e.g. ORDER_NOT_APPROVED)."""
+
+
+def get_order(order_id):
+    r = requests.get(f"{BASE}/v2/checkout/orders/{order_id}", headers=_headers(), timeout=TIMEOUT)
     r.raise_for_status()
-    return r.json()["purchase_units"][0]["payments"]["captures"][0]["id"]
+    return r.json()
+
+
+def _capture_id(order_json):
+    return order_json["purchase_units"][0]["payments"]["captures"][0]["id"]
+
+
+def capture(order_id):
+    """Capture after the buyer approves. Returns capture_id (save it: refunds need it).
+
+    Safe to call twice: PayPal-Request-Id makes the capture idempotent, and if the
+    order was already captured we read the existing capture id instead of failing.
+    """
+    headers = {**_headers(), "PayPal-Request-Id": f"capture-{order_id}"}
+    r = requests.post(f"{BASE}/v2/checkout/orders/{order_id}/capture", headers=headers, timeout=TIMEOUT)
+    if r.ok:
+        return _capture_id(r.json())
+    if r.status_code == 422:
+        order = get_order(order_id)
+        if order.get("status") == "COMPLETED":
+            return _capture_id(order)
+        issue = (r.json().get("details") or [{}])[0].get("issue", "UNPROCESSABLE")
+        raise PayPalError(f"PayPal could not capture this order ({issue}, status {order.get('status')}).")
+    r.raise_for_status()
 
 
 def refund(capture_id, amount_usd=None):

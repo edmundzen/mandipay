@@ -17,9 +17,16 @@ token = st.query_params.get("token")
 if token:
     o = db.by_paypal(token)
     if o and o["status"] == "created":
-        cid = paypal.capture(token)
-        db.update(o["id"], capture_id=cid, status="paid")
-        st.success(f"Payment received for order #{o['id']}. Awaiting delivery.")
+        try:
+            cid = paypal.capture(token)
+            db.update(o["id"], capture_id=cid, status="paid")
+            st.success(f"Payment received for order #{o['id']}. Awaiting delivery.")
+        except Exception as e:
+            print("[paypal] capture failed:", e)          # shows in Render logs
+            st.error(f"We couldn't confirm the payment for order #{o['id']}. "
+                     "Please create a new payment link and try again.")
+    elif o and o["status"] != "created":
+        st.info(f"Order #{o['id']} is already {o['status']}.")
     st.query_params.clear()
 
 def save_photo(data):
