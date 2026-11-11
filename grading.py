@@ -1,6 +1,6 @@
-import os, json
+import os, json, time, random
 from google import genai
-from google.genai import types
+from google.genai import types, errors
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -26,14 +26,30 @@ Return JSON only:
 def _img(data, mime):
     return types.Part.from_bytes(data=data, mime_type=mime or "image/jpeg")
 
+class AIBusy(Exception):
+    """Raised when every model attempt failed (overload, rate limit)."""
+
+# Try the main model first, then a fallback if Google says it's overloaded (503) or rate-limited (429).
+MODELS = list(dict.fromkeys([MODEL, os.getenv("GEMINI_FALLBACK_MODEL", "gemini-2.5-flash")]))
+
+def _ask(contents):
+    last = None
+    for model in MODELS:
+        for attempt in range(3):
+            try:
+                r = client.models.generate_content(model=model, contents=contents, config=CFG)
+                return json.loads(r.text)
+            except errors.APIError as e:
+                if getattr(e, "code", None) not in (429, 500, 503):
+                    raise
+                last = e
+                time.sleep(1.5 * 2 ** attempt + random.random())
+    raise AIBusy("The AI grader is busy right now. Please wait a minute and try again.") from last
+
 def grade(image_bytes, mime="image/jpeg"):
-    r = client.models.generate_content(model=MODEL,
-        contents=[_img(image_bytes, mime), GRADE_PROMPT], config=CFG)
-    return json.loads(r.text)
+    return _ask([_img(image_bytes, mime), GRADE_PROMPT])
 
 def judge(before_bytes, after_bytes, grade_letter, after_mime="image/jpeg"):
-    r = client.models.generate_content(model=MODEL,
-        contents=[_img(before_bytes, "image/jpeg"), _img(after_bytes, after_mime),
-                  JUDGE_PROMPT.format(grade=grade_letter)], config=CFG)
-    return json.loads(r.text)
+    return _ask([_img(before_bytes, "image/jpeg"), _img(after_bytes, after_mime),
+                 JUDGE_PROMPT.format(grade=grade_letter)])
 

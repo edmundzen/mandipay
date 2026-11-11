@@ -37,8 +37,11 @@ if page == "Farmer: sell":
     kg = st.number_input("Quantity (kg)", min_value=1.0, value=10.0)
     if f and st.button("Grade my produce"):
         with st.spinner("Grading..."):
-            st.session_state.g = grading.grade(f.getvalue(), f.type)
-            st.session_state.photo = f.getvalue()
+            try:
+                st.session_state.g = grading.grade(f.getvalue(), f.type)
+                st.session_state.photo = f.getvalue()
+            except grading.AIBusy as e:
+                st.error(str(e))
     if "g" in st.session_state:
         g = st.session_state.g
         crop = g["crop"].lower()
@@ -70,7 +73,11 @@ elif page == "Buyer: dispute":
             with open(o["photo"], "rb") as fh:
                 before = fh.read()
             with st.spinner("AI referee is comparing photos..."):
-                v = grading.judge(before, f.getvalue(), o["grade"], f.type)
+                try:
+                    v = grading.judge(before, f.getvalue(), o["grade"], f.type)
+                except grading.AIBusy as e:
+                    st.error(str(e))
+                    st.stop()
             db.update(o["id"], dispute_photo=save_photo(f.getvalue()),
                       status="refund_suggested",
                       refund_percent=v["refund_percent"], refund_reason=v["reason"])
