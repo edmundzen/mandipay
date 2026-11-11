@@ -3,3 +3,4 @@ requests>=2.32
 google-genai>=1.0
 python-dotenv>=1.0
 pillow>=10.0
+groq>=0.11
