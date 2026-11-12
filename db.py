@@ -22,7 +22,8 @@ def update(oid, **f):
     CON.commit()
 
 def by_paypal(pid):
-    return CON.execute("SELECT * FROM orders WHERE paypal_order=?", (pid,)).fetchone()
+    row = CON.execute("SELECT * FROM orders WHERE paypal_order=?", (pid,)).fetchone()
+    return dict(row) if row else None
 
 def all_orders():
-    return CON.execute("SELECT * FROM orders ORDER BY id DESC").fetchall()
+    return [dict(r) for r in CON.execute("SELECT * FROM orders ORDER BY id DESC").fetchall()]
