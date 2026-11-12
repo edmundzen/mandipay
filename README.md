@@ -26,7 +26,7 @@ An AI-powered quality grading and instant payment settlement system for agricult
 ## 🛠️ Tech Stack
 
 * **Frontend & Web UI:** Streamlit
-* **AI Model:** Google Gemini API (`gemini-2.5-flash` / `google-genai` SDK)
+* **AI Model:** Groq API(`openai/gpt-oss-120b` / `groq` Python SDK)
 * **Payments:** PayPal REST API (Sandbox Mode)
 * **Database:** SQLite3
 * **Language:** Python 3.11+
